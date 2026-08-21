@@ -430,13 +430,19 @@
     </span>
   </div>
   <div class="dash-tiles">
-    <!--RTS_TILE_START--><div class="dash-tile ship"><div class="num">0</div><div class="label">Ready to ship</div></div><!--RTS_TILE_END-->
+    <!--RTS_TILE_START--><div class="dash-tile ship"><div class="num">1</div><div class="label">Ready to ship</div></div><!--RTS_TILE_END-->
   </div>
 
   <!--RTS_CARD_START-->
   <div class="dash-section-label">Ready to ship &middot; eBay</div>
   <div class="dash-card">
-    <div class="dash-empty">Nothing waiting to ship on eBay.</div>
+    <a class="dash-item" href="https://www.ebay.com/sh/ovw" target="_blank" rel="noopener">
+      <div class="dot2 ok"></div>
+      <div class="dash-item-body">
+        <p class="dash-item-title">eBay &rarr;</p>
+        <p class="dash-item-meta">1 order awaiting shipment</p>
+      </div>
+    </a>
   </div>
   <!--RTS_CARD_END-->
 </div>
@@ -547,7 +553,7 @@
   updateClock();
   setInterval(updateClock, 30000);
 
-  document.getElementById("dashUpdated").textContent = "Updated Aug 21, 3:26 PM UTC";
+  document.getElementById("dashUpdated").textContent = "Updated Aug 21, 4:02 PM UTC";
 
   function refreshDashboard(){
     const btn = document.getElementById("refreshBtn");
