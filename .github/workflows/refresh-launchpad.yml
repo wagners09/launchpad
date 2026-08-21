@@ -1,0 +1,44 @@
+name: Refresh launchpad dashboard
+
+on:
+  schedule:
+    # Runs every 20 minutes. GitHub Actions cron times are always UTC.
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Refresh dashboard data
+        env:
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+          EBAY_REFRESH_TOKEN: ${{ secrets.EBAY_REFRESH_TOKEN }}
+        run: python scripts/refresh_dashboard.py
+
+      - name: Commit updated dashboard if changed
+        run: |
+          git config user.name "launchpad-bot"
+          git config user.email "actions@users.noreply.github.com"
+          if git diff --quiet index.html; then
+            echo "No changes to commit."
+          else
+            git add index.html
+            git commit -m "Auto-refresh ready-to-ship data"
+            git push
+          fi
