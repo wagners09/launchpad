@@ -25,13 +25,13 @@ jobs:
         run: pip install requests pynacl
 
       - name: Refresh dashboard data
-        env:
+       env:
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
           EBAY_REFRESH_TOKEN: ${{ secrets.EBAY_REFRESH_TOKEN }}
           ETSY_KEYSTRING: ${{ secrets.ETSY_KEYSTRING }}
+          ETSY_SHARED_SECRET: ${{ secrets.ETSY_SHARED_SECRET }}
           ETSY_REFRESH_TOKEN: ${{ secrets.ETSY_REFRESH_TOKEN }}
-          ETSY_SHOP_NAME: ${{ secrets.ETSY_SHOP_NAME }}
           GH_PAT: ${{ secrets.GH_PAT }}
         run: python scripts/refresh_dashboard.py
 
