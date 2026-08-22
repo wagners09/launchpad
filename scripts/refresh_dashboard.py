@@ -104,14 +104,16 @@ def refresh_etsy_token():
     return data["access_token"], data["refresh_token"]
 
 
-def get_etsy_shop_id(client_id, shop_name):
-    """Public shop-search endpoint -- only needs the app's client id, not a
-    user access token, so it isn't gated by whatever scope the OAuth grant
-    has. Sidesteps a 403 we hit looking shops up via the user-scoped
-    endpoint, which apparently wants more than "transactions_r"."""
+def get_etsy_shop_id(client_id, shop_name, access_token):
+    """Shop-search endpoint. Apps registered without a legacy "shared
+    secret" (i.e. every app created through Etsy's current OAuth-only
+    developer console) get rejected with "Shared secret is required in
+    x-api-key header" if called with just the API key -- it needs the
+    OAuth access token alongside it, same as any other authenticated
+    call."""
     resp = requests.get(
         "https://api.etsy.com/v3/application/shops",
-        headers={"x-api-key": client_id},
+        headers={"x-api-key": client_id, "Authorization": f"Bearer {access_token}"},
         params={"shop_name": shop_name},
         timeout=20,
     )
@@ -127,7 +129,7 @@ def get_etsy_count(access_token):
     shop_name = os.environ["ETSY_SHOP_NAME"]
     headers = {"x-api-key": client_id, "Authorization": f"Bearer {access_token}"}
 
-    shop_id = get_etsy_shop_id(client_id, shop_name)
+    shop_id = get_etsy_shop_id(client_id, shop_name, access_token)
 
     receipts_resp = requests.get(
         f"https://api.etsy.com/v3/application/shops/{shop_id}/receipts",
@@ -235,12 +237,28 @@ def main():
     try:
         old_refresh_token = os.environ["ETSY_REFRESH_TOKEN"]
         access_token, new_refresh_token = refresh_etsy_token()
-        etsy_count = get_etsy_count(access_token)
-        if new_refresh_token != old_refresh_token:
-            update_github_secret("ETSY_REFRESH_TOKEN", new_refresh_token)
-            print("Etsy refresh token rotated and saved to GitHub secrets.")
     except Exception as e:  # noqa: BLE001
+        access_token = None
         print(f"Etsy fetch failed: {e}", file=sys.stderr)
+    else:
+        # Save the rotated refresh token RIGHT AWAY, before anything else
+        # Etsy-related can fail. Etsy's refresh tokens are single-use --
+        # the token above is already burned the moment this call succeeded,
+        # whether or not the rest of this run goes on to work. If we waited
+        # until after get_etsy_count() and that call failed, we'd strand
+        # the account on a dead refresh token with no way to recover
+        # without redoing the whole OAuth flow by hand.
+        if new_refresh_token != old_refresh_token:
+            try:
+                update_github_secret("ETSY_REFRESH_TOKEN", new_refresh_token)
+                print("Etsy refresh token rotated and saved to GitHub secrets.")
+            except Exception as e:  # noqa: BLE001
+                print(f"Etsy fetch failed: could not save rotated refresh token: {e}", file=sys.stderr)
+
+        try:
+            etsy_count = get_etsy_count(access_token)
+        except Exception as e:  # noqa: BLE001
+            print(f"Etsy fetch failed: {e}", file=sys.stderr)
 
     if ebay_count is None and etsy_count is None:
         print("Both eBay and Etsy fetches failed -- leaving index.html unchanged.", file=sys.stderr)
