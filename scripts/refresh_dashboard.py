@@ -45,6 +45,20 @@ import requests
 INDEX_PATH = "index.html"
 
 
+def check_response(resp):
+    """Like resp.raise_for_status(), but folds the response body into the
+    exception message. Etsy and eBay both send a JSON body explaining
+    *why* a request was rejected (invalid_grant, bad scope, etc.), and the
+    plain "400 Client Error: Bad Request" from raise_for_status() alone
+    throws that detail away -- leaving us guessing from GitHub Actions
+    logs instead of just reading the answer."""
+    if not resp.ok:
+        raise RuntimeError(
+            f"{resp.status_code} {resp.reason} for url: {resp.url} -- {resp.text[:500]}"
+        )
+    return resp
+
+
 def get_ebay_count():
     client_id = os.environ["EBAY_CLIENT_ID"]
     client_secret = os.environ["EBAY_CLIENT_SECRET"]
@@ -64,7 +78,7 @@ def get_ebay_count():
         },
         timeout=20,
     )
-    tok_resp.raise_for_status()
+    check_response(tok_resp)
     access_token = tok_resp.json()["access_token"]
 
     # Count orders that are sold but not fully shipped yet -- this is what
@@ -79,7 +93,7 @@ def get_ebay_count():
         },
         timeout=20,
     )
-    orders_resp.raise_for_status()
+    check_response(orders_resp)
     return orders_resp.json().get("total", 0)
 
 
@@ -99,7 +113,7 @@ def refresh_etsy_token():
         },
         timeout=20,
     )
-    resp.raise_for_status()
+    check_response(resp)
     data = resp.json()
     return data["access_token"], data["refresh_token"]
 
@@ -117,7 +131,7 @@ def get_etsy_shop_id(client_id, shop_name, access_token):
         params={"shop_name": shop_name},
         timeout=20,
     )
-    resp.raise_for_status()
+    check_response(resp)
     results = resp.json().get("results", [])
     if not results:
         raise RuntimeError(f"No Etsy shop found named {shop_name!r}")
@@ -137,7 +151,7 @@ def get_etsy_count(access_token):
         params={"was_shipped": "false", "limit": 100},
         timeout=20,
     )
-    receipts_resp.raise_for_status()
+    check_response(receipts_resp)
     return receipts_resp.json().get("count", 0)
 
 
