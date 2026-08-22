@@ -12,11 +12,6 @@ Required secrets (set in GitHub repo Settings > Secrets and variables > Actions)
   ETSY_KEYSTRING       - Etsy app API key ("keystring")
   ETSY_REFRESH_TOKEN   - Etsy user refresh token (from the manual PKCE
                           authorization-code exchange -- see SETUP_GUIDE.md)
-  ETSY_SHOP_NAME       - the name in your shop's URL, e.g. "theredboneforge"
-                          for theredboneforge.etsy.com. Used to look up your
-                          shop id via Etsy's public shop-search endpoint
-                          instead of a user-scoped lookup (which needs a
-                          broader permission than plain order-reading does).
   GH_PAT               - a fine-grained GitHub personal access token, scoped
                           to just this repo, with "Secrets: write" permission.
                           Etsy's refresh token rotates every time it's used --
@@ -118,32 +113,35 @@ def refresh_etsy_token():
     return data["access_token"], data["refresh_token"]
 
 
-def get_etsy_shop_id(client_id, shop_name, access_token):
-    """Shop-search endpoint. Apps registered without a legacy "shared
-    secret" (i.e. every app created through Etsy's current OAuth-only
-    developer console) get rejected with "Shared secret is required in
-    x-api-key header" if called with just the API key -- it needs the
-    OAuth access token alongside it, same as any other authenticated
-    call."""
+def get_etsy_shop_id(client_id, access_token):
+    """Look up the shop via the user-scoped endpoint instead of the public
+    shop-search-by-name endpoint. The name-search endpoint turns out to
+    require a legacy "shared secret" app credential no matter what headers
+    go with it -- something apps created through Etsy's current OAuth/PKCE-
+    only developer console (like this one) simply don't have. The
+    user-scoped lookup only needs the OAuth access token, which we already
+    have. The Etsy user id is just the numeric prefix on the access token
+    itself (formatted "<user_id>.<rest of token>"), so no extra secret is
+    needed to get it."""
+    user_id = access_token.split(".", 1)[0]
     resp = requests.get(
-        "https://api.etsy.com/v3/application/shops",
+        f"https://api.etsy.com/v3/application/users/{user_id}/shops",
         headers={"x-api-key": client_id, "Authorization": f"Bearer {access_token}"},
-        params={"shop_name": shop_name},
         timeout=20,
     )
     check_response(resp)
-    results = resp.json().get("results", [])
-    if not results:
-        raise RuntimeError(f"No Etsy shop found named {shop_name!r}")
-    return results[0]["shop_id"]
+    data = resp.json()
+    shop_id = data.get("shop_id")
+    if not shop_id:
+        raise RuntimeError(f"No shop found for Etsy user {user_id}")
+    return shop_id
 
 
 def get_etsy_count(access_token):
     client_id = os.environ["ETSY_KEYSTRING"]
-    shop_name = os.environ["ETSY_SHOP_NAME"]
     headers = {"x-api-key": client_id, "Authorization": f"Bearer {access_token}"}
 
-    shop_id = get_etsy_shop_id(client_id, shop_name, access_token)
+    shop_id = get_etsy_shop_id(client_id, access_token)
 
     receipts_resp = requests.get(
         f"https://api.etsy.com/v3/application/shops/{shop_id}/receipts",
