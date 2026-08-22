@@ -59,13 +59,21 @@ def check_response(resp):
 
 
 def get_ebay_count():
-    # .strip() everything -- a stray trailing newline or space picked up when
-    # pasting into GitHub's secret box is invisible in the UI but silently
-    # breaks Basic Auth / API key matching. Stripping here fixes that no
-    # matter how the whitespace got into the secret in the first place.
     client_id = os.environ["EBAY_CLIENT_ID"].strip()
     client_secret = os.environ["EBAY_CLIENT_SECRET"].strip()
     refresh_token = os.environ["EBAY_REFRESH_TOKEN"].strip()
+
+    # TEMPORARY debug line -- prints only length + last 4 chars of each
+    # secret (never the full value) so we can confirm what's actually
+    # stored in GitHub matches what's on the eBay Application Keys page,
+    # without ever exposing the real secret in a log. Remove once eBay
+    # auth is confirmed working.
+    print(
+        f"[debug] client_id: len={len(client_id)} ends='...{client_id[-4:]}' | "
+        f"client_secret: len={len(client_secret)} ends='...{client_secret[-4:]}' | "
+        f"refresh_token: len={len(refresh_token)} starts='{refresh_token[:6]}...'",
+        file=sys.stderr,
+    )
 
     basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     tok_resp = requests.post(
