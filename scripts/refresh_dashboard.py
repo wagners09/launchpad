@@ -10,6 +10,10 @@ Required secrets (set in GitHub repo Settings > Secrets and variables > Actions)
   EBAY_REFRESH_TOKEN   - eBay user refresh token (from the developer portal's
                           "Sign in to Production" token tool)
   ETSY_KEYSTRING       - Etsy app API key ("keystring")
+  ETSY_SHARED_SECRET   - Etsy app "Shared Secret" (shown alongside the
+                          keystring on the app's Etsy developer portal page).
+                          Etsy's x-api-key header wants "keystring:secret"
+                          together, not just the bare keystring.
   ETSY_REFRESH_TOKEN   - Etsy user refresh token (from the manual PKCE
                           authorization-code exchange -- see SETUP_GUIDE.md)
   GH_PAT               - a fine-grained GitHub personal access token, scoped
@@ -55,9 +59,13 @@ def check_response(resp):
 
 
 def get_ebay_count():
-    client_id = os.environ["EBAY_CLIENT_ID"]
-    client_secret = os.environ["EBAY_CLIENT_SECRET"]
-    refresh_token = os.environ["EBAY_REFRESH_TOKEN"]
+    # .strip() everything -- a stray trailing newline or space picked up when
+    # pasting into GitHub's secret box is invisible in the UI but silently
+    # breaks Basic Auth / API key matching. Stripping here fixes that no
+    # matter how the whitespace got into the secret in the first place.
+    client_id = os.environ["EBAY_CLIENT_ID"].strip()
+    client_secret = os.environ["EBAY_CLIENT_SECRET"].strip()
+    refresh_token = os.environ["EBAY_REFRESH_TOKEN"].strip()
 
     basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     tok_resp = requests.post(
@@ -92,11 +100,22 @@ def get_ebay_count():
     return orders_resp.json().get("total", 0)
 
 
+def etsy_api_key():
+    """Etsy's x-api-key header wants "<keystring>:<shared secret>", not just
+    the bare keystring -- that's what the "Shared secret is required in
+    x-api-key header" error was actually asking for all along, on every
+    endpoint, regardless of which shop-lookup route or which OAuth headers
+    went with it."""
+    keystring = os.environ["ETSY_KEYSTRING"].strip()
+    shared_secret = os.environ["ETSY_SHARED_SECRET"].strip()
+    return f"{keystring}:{shared_secret}"
+
+
 def refresh_etsy_token():
     """Exchange the current Etsy refresh token for a new access token AND a
     new refresh token (Etsy rotates the refresh token on every use)."""
-    client_id = os.environ["ETSY_KEYSTRING"]
-    refresh_token = os.environ["ETSY_REFRESH_TOKEN"]
+    client_id = os.environ["ETSY_KEYSTRING"].strip()
+    refresh_token = os.environ["ETSY_REFRESH_TOKEN"].strip()
 
     resp = requests.post(
         "https://api.etsy.com/v3/public/oauth/token",
@@ -113,20 +132,14 @@ def refresh_etsy_token():
     return data["access_token"], data["refresh_token"]
 
 
-def get_etsy_shop_id(client_id, access_token):
-    """Look up the shop via the user-scoped endpoint instead of the public
-    shop-search-by-name endpoint. The name-search endpoint turns out to
-    require a legacy "shared secret" app credential no matter what headers
-    go with it -- something apps created through Etsy's current OAuth/PKCE-
-    only developer console (like this one) simply don't have. The
-    user-scoped lookup only needs the OAuth access token, which we already
-    have. The Etsy user id is just the numeric prefix on the access token
-    itself (formatted "<user_id>.<rest of token>"), so no extra secret is
-    needed to get it."""
+def get_etsy_shop_id(access_token):
+    """Look up the shop via the user-scoped endpoint. The Etsy user id is
+    just the numeric prefix on the access token itself (formatted
+    "<user_id>.<rest of token>")."""
     user_id = access_token.split(".", 1)[0]
     resp = requests.get(
         f"https://api.etsy.com/v3/application/users/{user_id}/shops",
-        headers={"x-api-key": client_id, "Authorization": f"Bearer {access_token}"},
+        headers={"x-api-key": etsy_api_key(), "Authorization": f"Bearer {access_token}"},
         timeout=20,
     )
     check_response(resp)
@@ -138,10 +151,9 @@ def get_etsy_shop_id(client_id, access_token):
 
 
 def get_etsy_count(access_token):
-    client_id = os.environ["ETSY_KEYSTRING"]
-    headers = {"x-api-key": client_id, "Authorization": f"Bearer {access_token}"}
+    headers = {"x-api-key": etsy_api_key(), "Authorization": f"Bearer {access_token}"}
 
-    shop_id = get_etsy_shop_id(client_id, access_token)
+    shop_id = get_etsy_shop_id(access_token)
 
     receipts_resp = requests.get(
         f"https://api.etsy.com/v3/application/shops/{shop_id}/receipts",
