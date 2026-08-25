@@ -86,12 +86,32 @@ def build_tile(printing_count):
     )
 
 
+def format_minutes(total_minutes):
+    """Turns a raw minute count into something like '2d 10h 31m' instead of '3511 min'."""
+    try:
+        total_minutes = int(total_minutes)
+    except (TypeError, ValueError):
+        return None
+    if total_minutes < 0:
+        return None
+    days, rem = divmod(total_minutes, 1440)
+    hours, minutes = divmod(rem, 60)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if days or hours:
+        parts.append(f"{hours}h")
+    parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
 def build_row(p):
     if p["status"] == "unreachable":
         return f'    <div class="dash-empty">{p["name"]}: couldn\'t reach it on the network.</div>'
     if p["status"] == "printing":
         pct = f'{p["percentage"]}%' if p["percentage"] is not None else "printing"
-        eta = f' &middot; {p["minutes_left"]} min left' if p["minutes_left"] is not None else ""
+        time_left = format_minutes(p["minutes_left"])
+        eta = f' &middot; {time_left} left' if time_left is not None else ""
         return (
             '    <div class="dash-item">\n'
             '      <div class="dot2 ok"></div>\n'
