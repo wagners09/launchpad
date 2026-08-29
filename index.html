@@ -430,7 +430,7 @@
     </span>
   </div>
   <div class="dash-tiles">
-    <!--RTS_TILE_START--><div class="dash-tile ship"><div class="num">0</div><div class="label">Ready to ship</div></div><!--RTS_TILE_END-->
+    <!--RTS_TILE_START--><div class="dash-tile ship"><div class="num">1</div><div class="label">Ready to ship</div></div><!--RTS_TILE_END-->
     <!--PRINT_TILE_START--><div class="dash-tile"><div class="num">1</div><div class="label">Printing now</div></div><!--PRINT_TILE_END-->
   </div>
 
@@ -438,7 +438,13 @@
   <div class="dash-section-label">Ready to ship</div>
   <div class="dash-card">
     <div class="dash-empty">Couldn't check eBay just now.</div>
-    <div class="dash-empty">Nothing waiting to ship on Etsy.</div>
+    <a class="dash-item" href="https://www.etsy.com/your/shops/me/order-list?tab=open" target="_blank" rel="noopener">
+      <div class="dot2 ok"></div>
+      <div class="dash-item-body">
+        <p class="dash-item-title">Etsy &rarr;</p>
+        <p class="dash-item-meta">1 order awaiting shipment</p>
+      </div>
+    </a>
   </div>
   <!--RTS_CARD_END-->
 
@@ -568,7 +574,7 @@
   updateClock();
   setInterval(updateClock, 30000);
 
-  document.getElementById("dashUpdated").textContent = "Updated Aug 29, 6:51 PM UTC";
+  document.getElementById("dashUpdated").textContent = "Updated Aug 29, 9:29 PM UTC";
 
   function refreshDashboard(){
     const btn = document.getElementById("refreshBtn");
