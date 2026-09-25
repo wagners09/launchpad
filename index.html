@@ -315,6 +315,57 @@
     margin:14px 0 8px;
   }
 
+  .mkt-row{
+    padding:13px 16px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    border-bottom:1px solid var(--border);
+  }
+  .mkt-row:last-child{border-bottom:none;}
+  .mkt-checkbox{display:flex;align-items:center;flex-shrink:0;}
+  .mkt-checkbox input{width:16px;height:16px;accent-color:var(--accent-resell);cursor:pointer;}
+  .mkt-platform{
+    font-size:11px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    color:var(--muted);
+    background:var(--panel-hover);
+    border-radius:6px;
+    padding:3px 8px;
+    flex-shrink:0;
+    white-space:nowrap;
+  }
+  .mkt-subject{
+    flex:1;
+    min-width:0;
+    font-size:14px;
+    font-weight:600;
+    color:var(--accent-resell);
+    text-decoration:none;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .mkt-subject:hover{text-decoration:underline;}
+  .mkt-countdown{
+    font-size:12px;
+    font-weight:600;
+    color:var(--warn);
+    background:var(--warn-soft);
+    border-radius:6px;
+    padding:3px 8px;
+    flex-shrink:0;
+    white-space:nowrap;
+  }
+  .mkt-empty{
+    padding:16px;
+    text-align:center;
+    color:var(--muted);
+    font-size:13px;
+  }
+
   .logo{
     width:40px;
     height:40px;
@@ -465,13 +516,23 @@
     </div>
     <div class="dash-empty">Legolas: idle.</div>
   </div>
-  <!--<!--MKT_ORDERS_CARD_START-->
+  <!--PRINT_CARD_END-->
+
+  <div class="dash-section-label">Marketplace orders</div>
+  <div class="dash-card">
+  <!--MKT_ORDERS_CARD_START-->
 <div class="mkt-empty">Nothing here right now.</div>
 <!--MKT_ORDERS_CARD_END-->
-<!--MKT_OFFERS_CARD_START-->
+  </div>
+<div class="dash-section-label">Marketplace offers</div>
+  <div class="dash-card">
+  <!--MKT_OFFERS_CARD_START-->
 <div class="mkt-empty">Nothing here right now.</div>
 <!--MKT_OFFERS_CARD_END-->
-<!--MKT_MESSAGES_CARD_START-->
+  </div>
+<div class="dash-section-label">Marketplace messages</div>
+  <div class="dash-card">
+  <!--MKT_MESSAGES_CARD_START-->
 <div class="mkt-row" data-mkt-id="306474">
   <label class="mkt-checkbox"><input type="checkbox" class="mkt-dismiss" data-id="306474"></label>
   <span class="mkt-platform">eBay</span>
@@ -988,7 +1049,8 @@
   <a class="mkt-subject" href="https://www.ebay.com/ulk/messages/reply?M2MContact&amp;item=188543367930&amp;requested=devinater&amp;qid=6298925283019&amp;redirect=0&amp;self=wagners99&amp;mkevt=1&amp;mkpid=0&amp;emsid=e111028.m44.l1139&amp;mkcid=7&amp;ch=osgood&amp;euid=09520d41aeb7437b88facc90cc076852&amp;bu=43196511432&amp;osub=-1%7E1&amp;crd=20260629085245&amp;segname=111028" target="_blank" rel="noopener">devinater sent a message about BOGEN SBA 225 Master Control Console with MCP 35A Intercom Paging System USA #188543367930</a>
   
 </div>
-<!--MKT_MESSAGES_CARD_END-->PRINT_CARD_END-->
+<!--MKT_MESSAGES_CARD_END-->
+  </div>
 </div>
 
 <div class="grid">
