@@ -265,6 +265,8 @@
   }
   .dash-tiles{
     display:flex;
+    flex-wrap:wrap;
+    gap:14px;
     margin-bottom:14px;
   }
   .dash-tile{
@@ -277,6 +279,8 @@
   .dash-tile .num{font-size:22px;font-weight:700;line-height:1;}
   .dash-tile .label{font-size:12px;color:var(--muted);margin-top:5px;}
   .dash-tile.ship .num{color:var(--ok);}
+  .dash-tile.warn .num{color:var(--warn);}
+  .dash-tile.info .num{color:var(--accent-holman);}
   .dash-card{
     background:var(--panel);
     border:1px solid var(--border);
@@ -364,6 +368,17 @@
     text-align:center;
     color:var(--muted);
     font-size:13px;
+  }
+
+  .mkt-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0,1fr));
+    gap:14px;
+    align-items:start;
+    margin-bottom:10px;
+  }
+  @media (max-width:900px){
+    .mkt-grid{grid-template-columns:1fr;}
   }
 
   .logo{
@@ -481,23 +496,17 @@
     </span>
   </div>
   <div class="dash-tiles">
-    <!--RTS_TILE_START--><div class="dash-tile ship"><div class="num">1</div><div class="label">Ready to ship</div></div><!--RTS_TILE_END-->
+    <!--MKT_ORDERS_TILE_START-->
+<div class="dash-tile ship"><div class="num">0</div><div class="label">Marketplace orders</div></div>
+<!--MKT_ORDERS_TILE_END-->
+    <!--MKT_OFFERS_TILE_START-->
+<div class="dash-tile warn"><div class="num">0</div><div class="label">Marketplace offers</div></div>
+<!--MKT_OFFERS_TILE_END-->
+    <!--MKT_MESSAGES_TILE_START-->
+<div class="dash-tile info"><div class="num">86</div><div class="label">Marketplace messages</div></div>
+<!--MKT_MESSAGES_TILE_END-->
     <!--PRINT_TILE_START--><div class="dash-tile"><div class="num">1</div><div class="label">Printing now</div></div><!--PRINT_TILE_END-->
   </div>
-
-  <!--RTS_CARD_START-->
-  <div class="dash-section-label">Ready to ship</div>
-  <div class="dash-card">
-    <div class="dash-empty">Couldn't check eBay just now.</div>
-    <a class="dash-item" href="https://www.etsy.com/your/shops/me/order-list?tab=open" target="_blank" rel="noopener">
-      <div class="dot2 ok"></div>
-      <div class="dash-item-body">
-        <p class="dash-item-title">Etsy &rarr;</p>
-        <p class="dash-item-meta">1 order awaiting shipment</p>
-      </div>
-    </a>
-  </div>
-  <!--RTS_CARD_END-->
 
   <!--PRINT_CARD_START-->
   <div class="dash-section-label">Print queue &middot; Bambu Lab</div>
@@ -518,19 +527,25 @@
   </div>
   <!--PRINT_CARD_END-->
 
+  <div class="mkt-grid">
+  <div>
   <div class="dash-section-label">Marketplace orders</div>
   <div class="dash-card">
   <!--MKT_ORDERS_CARD_START-->
 <div class="mkt-empty">Nothing here right now.</div>
 <!--MKT_ORDERS_CARD_END-->
   </div>
-<div class="dash-section-label">Marketplace offers</div>
+  </div>
+  <div>
+  <div class="dash-section-label">Marketplace offers</div>
   <div class="dash-card">
   <!--MKT_OFFERS_CARD_START-->
 <div class="mkt-empty">Nothing here right now.</div>
 <!--MKT_OFFERS_CARD_END-->
   </div>
-<div class="dash-section-label">Marketplace messages</div>
+  </div>
+  <div>
+  <div class="dash-section-label">Marketplace messages</div>
   <div class="dash-card">
   <!--MKT_MESSAGES_CARD_START-->
 <div class="mkt-row" data-mkt-id="327903">
@@ -1051,6 +1066,8 @@
 </div>
 <!--MKT_MESSAGES_CARD_END-->
   </div>
+  </div>
+  </div>
 </div>
 
 <div class="grid">
@@ -1080,7 +1097,7 @@
 <footer>
   Edit the <code>LINKS</code> object near the top of the <code>&lt;script&gt;</code> section in this file to add,
   remove, or rename links, then save.<br>
-  The &ldquo;Ready to ship&rdquo; card updates itself automatically from eBay every 20 minutes once the GitHub automation is live.<br>
+  The marketplace cards update automatically from Mail every 15 minutes.<br>
   To use this as your Safari start page: Safari &rarr; Settings &rarr; General &rarr; Homepage, then point it at this file.
 </footer>
 
