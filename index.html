@@ -1234,6 +1234,26 @@
   var KEY = "launchpad_mkt_dismissed";
   function getDismissed() { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch(e) { return []; } }
   function setDismissed(a) { try { localStorage.setItem(KEY, JSON.stringify(a)); } catch(e) {} }
+
+  function updateTiles() {
+    document.querySelectorAll(".dash-section-label").forEach(function(labelEl) {
+      var name = labelEl.textContent.trim();
+      var card = labelEl.nextElementSibling;
+      if (!card || !card.classList.contains("dash-card")) return;
+      var visible = 0;
+      card.querySelectorAll(".mkt-row[data-mkt-id]").forEach(function(row) {
+        if (row.style.display !== "none") visible++;
+      });
+      document.querySelectorAll(".dash-tile").forEach(function(tile) {
+        var tileLabel = tile.querySelector(".label");
+        if (tileLabel && tileLabel.textContent.trim() === name) {
+          var num = tile.querySelector(".num");
+          if (num) num.textContent = visible;
+        }
+      });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function() {
     var dismissed = getDismissed();
     dismissed.forEach(function(id) {
@@ -1252,8 +1272,10 @@
           list = list.filter(function(x){ return x !== id; });
         }
         setDismissed(list);
+        updateTiles();
       });
     });
+    updateTiles();
   });
 })();
 </script>
