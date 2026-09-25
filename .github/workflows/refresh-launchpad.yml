@@ -1,9 +1,8 @@
 name: Refresh launchpad dashboard
 
 on:
-  schedule:
-    # Runs every 20 minutes. GitHub Actions cron times are always UTC.
-    - cron: "*/20 * * * *"
+  # Disabled: Ready to ship is now handled by marketplace_refresh.py / Mail.
+  # Kept as manual-only in case this is ever needed again.
   workflow_dispatch: {}
 
 permissions:
