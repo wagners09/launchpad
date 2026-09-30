@@ -36,6 +36,11 @@ import re
 import sys
 import argparse
 import email
+import json
+import os
+import urllib.request
+import urllib.error
+import urllib.parse
 from pathlib import Path
 from datetime import datetime, timedelta
 from html import unescape
@@ -43,6 +48,18 @@ from html import unescape
 REPO_DIR = Path.home() / "launchpad"
 INDEX_HTML = REPO_DIR / "index.html"
 ACCOUNT_NAME = "iCloud"  # must match the account name exactly as Mail.app shows it
+
+# Shopify orders are pulled directly from the Admin API instead of Mail -
+# more reliable than depending on a notification email arriving and being
+# filed correctly. All values come from environment variables set in
+# com.launchpad.marketplace.plist (never committed to the public repo).
+# Uses a Dev Dashboard app's Client ID + secret to fetch a short-lived
+# access token each run (client credentials grant).
+SHOPIFY_STORE_DOMAIN = os.environ.get("SHOPIFY_STORE_DOMAIN", "")    # e.g. "redboneforge.myshopify.com"
+SHOPIFY_CLIENT_ID = os.environ.get("SHOPIFY_CLIENT_ID", "")
+SHOPIFY_CLIENT_SECRET = os.environ.get("SHOPIFY_CLIENT_SECRET", "")
+SHOPIFY_ACCESS_TOKEN = os.environ.get("SHOPIFY_ACCESS_TOKEN", "")    # optional: skip the token fetch
+SHOPIFY_API_VERSION = "2026-07"
 
 MAILBOXES = {
     "orders": "Orders to Ship",
@@ -390,6 +407,16 @@ def esc(text):
     return (text.replace("&", "&amp;").replace("<", "&lt;")
                 .replace(">", "&gt;").replace('"', "&quot;"))
 
+# Emails that land in "Orders to Ship" but aren't something to ship -
+# ratings, reviews, payout / earnings notices, delivery confirmations.
+NOT_AN_ORDER_RE = re.compile(
+    r"gave you a \d-star|star rating|left (you )?(a )?(review|feedback)|"
+    r"your earnings|earnings from|payout|funds (are )?(now )?available|"
+    r"has been delivered|was delivered|order delivered|"
+    r"thank you for shipping|thanks for shipping|you shipped|has shipped|"
+    r"marked as shipped",
+    re.I)
+
 def build_row(msg_id, platform, subject, link, extra_html=""):
     href = esc(link) if link else "#"
     return f'''<div class="mkt-row" data-mkt-id="{esc(msg_id)}">
@@ -415,6 +442,131 @@ def replace_between(html, start_marker, end_marker, new_inner):
     if not pattern.search(html):
         raise RuntimeError(f"Markers {start_marker} / {end_marker} not found in index.html")
     return pattern.sub(replacement, html)
+
+
+# ---------------------------------------------------------------------------
+# Shopify (Admin API, not Mail)
+# ---------------------------------------------------------------------------
+
+def get_shopify_token():
+    """Returns an Admin API access token, or "" if it can't get one."""
+    if SHOPIFY_ACCESS_TOKEN:
+        return SHOPIFY_ACCESS_TOKEN
+    body = urllib.parse.urlencode({
+        "grant_type": "client_credentials",
+        "client_id": SHOPIFY_CLIENT_ID,
+        "client_secret": SHOPIFY_CLIENT_SECRET,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://{SHOPIFY_STORE_DOMAIN}/admin/oauth/access_token",
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded",
+                 "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8")).get("access_token", "")
+    except urllib.error.HTTPError as e:
+        print(f"  Shopify token error {e.code}: {e.read().decode('utf-8', 'replace')[:500]}",
+              file=sys.stderr)
+    except urllib.error.URLError as e:
+        print(f"  Shopify token request failed: {e}", file=sys.stderr)
+    return ""
+
+
+# Orders synced into Shopify from another marketplace (eBay etc. via
+# Marketplace Connect) are skipped - they already appear on the card from
+# that marketplace's own sale email, so showing them here too would double up.
+MARKETPLACE_CONNECT_APPS = {"marketplace connect"}
+MARKETPLACE_SOURCES = {"ebay", "etsy", "walmart", "amazon", "target_plus"}
+
+SHOPIFY_ORDERS_QUERY = """
+{
+  orders(first: 50, sortKey: CREATED_AT, reverse: true,
+         query: "status:open AND fulfillment_status:unfulfilled AND financial_status:paid") {
+    edges {
+      node {
+        legacyResourceId
+        name
+        sourceName
+        app { name }
+        totalPriceSet { shopMoney { amount currencyCode } }
+        lineItems(first: 5) { edges { node { title quantity } } }
+      }
+    }
+  }
+}
+"""
+
+
+def fetch_shopify_unfulfilled_orders():
+    """
+    Returns build_row(...) HTML for every paid, unfulfilled, open order in
+    Shopify, straight from the Admin GraphQL API - no dependency on an
+    order email ever arriving or being filed into "Orders to Ship".
+
+    If the env vars aren't set, or anything goes wrong talking to Shopify,
+    prints a note and returns [] rather than crashing the whole refresh.
+    """
+    if not SHOPIFY_STORE_DOMAIN or not (SHOPIFY_ACCESS_TOKEN or
+                                        (SHOPIFY_CLIENT_ID and SHOPIFY_CLIENT_SECRET)):
+        print("  (Shopify orders skipped - SHOPIFY_STORE_DOMAIN / "
+              "SHOPIFY_CLIENT_ID / SHOPIFY_CLIENT_SECRET not set)", file=sys.stderr)
+        return None
+
+    token = get_shopify_token()
+    if not token:
+        return None
+
+    req = urllib.request.Request(
+        f"https://{SHOPIFY_STORE_DOMAIN}/admin/api/{SHOPIFY_API_VERSION}/graphql.json",
+        data=json.dumps({"query": SHOPIFY_ORDERS_QUERY}).encode("utf-8"),
+        headers={"X-Shopify-Access-Token": token,
+                 "Content-Type": "application/json",
+                 "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        print(f"  Shopify API error {e.code}: {e.read().decode('utf-8', 'replace')[:500]}",
+              file=sys.stderr)
+        return None
+    except urllib.error.URLError as e:
+        print(f"  Shopify API request failed: {e}", file=sys.stderr)
+        return None
+
+    if data.get("errors"):
+        print(f"  Shopify GraphQL errors: {json.dumps(data['errors'])[:500]}", file=sys.stderr)
+        return None
+
+    rows = []
+    skipped = 0
+    shop_slug = SHOPIFY_STORE_DOMAIN.split(".")[0]
+    edges = (((data.get("data") or {}).get("orders") or {}).get("edges") or [])
+    for edge in edges:
+        node = edge.get("node") or {}
+        app_name = ((node.get("app") or {}).get("name") or "").strip().lower()
+        source = (node.get("sourceName") or "").strip().lower()
+        if app_name in MARKETPLACE_CONNECT_APPS or source in MARKETPLACE_SOURCES:
+            skipped += 1
+            continue
+        order_id = node.get("legacyResourceId", "")
+        items = []
+        for li in ((node.get("lineItems") or {}).get("edges") or []):
+            li = li.get("node") or {}
+            title = li.get("title", "?")
+            qty = li.get("quantity", 1)
+            items.append(f"{title} \u00d7{qty}" if qty and qty > 1 else title)
+        money = ((node.get("totalPriceSet") or {}).get("shopMoney") or {})
+        amount = money.get("amount", "?")
+        subject = f"{node.get('name', '?')} \u2014 {', '.join(items) or '(no items)'} \u2014 ${amount}"
+        link = f"https://admin.shopify.com/store/{shop_slug}/orders/{order_id}"
+        rows.append(build_row(f"shopify-{order_id}", "Shopify", subject, link))
+
+    print(f"  Shopify: {len(rows)} paid/unfulfilled order(s)"
+          + (f" (skipped {skipped} synced from eBay/other marketplaces)" if skipped else ""))
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -490,6 +642,9 @@ def main():
             print(f"  -> [{platform}] {msg['subject'][:70]!r} link={link}")
 
             if kind == "orders":
+                if NOT_AN_ORDER_RE.search(msg["subject"]):
+                    print("     (skipped - not an order to ship)")
+                    continue
                 order_rows.append(build_row(msg["id"], platform, msg["subject"], link))
             elif kind == "messages":
                 thread_key = compute_thread_key(platform, msg["subject"], link)
@@ -522,6 +677,17 @@ def main():
     for msg_id, platform, subject, link, countdown in deduped_offers:
         extra = f'<span class="mkt-countdown">{esc(countdown)}</span>'
         offer_rows.append(build_row(msg_id, platform, subject, link, extra))
+
+    print("--- Reading Shopify (Admin API) ---")
+    shopify_rows = fetch_shopify_unfulfilled_orders()
+    if shopify_rows is not None:
+        before = len(order_rows)
+        order_rows = [r for r in order_rows
+                      if '<span class="mkt-platform">Shopify</span>' not in r]
+        if len(order_rows) != before:
+            print(f"  (dropped {before - len(order_rows)} Shopify order email(s) - "
+                  f"using the API instead)")
+        order_rows.extend(shopify_rows)
 
     if args.dry_run:
         print("\n=== Dry run complete - index.html and git were not touched ===")
