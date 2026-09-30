@@ -1511,5 +1511,28 @@
   });
 })();
 </script>
+<style id="mkt-platform-colors">
+  /* Per-marketplace colors: badge fill + a stripe down the left edge of the row */
+  .mkt-row[data-p]{box-shadow:inset 4px 0 0 var(--p-color, transparent);}
+  .mkt-row[data-p] .mkt-platform{background:var(--p-color);color:var(--p-text, #fff);}
+  .mkt-row[data-p="ebay"]{--p-color:#F5AF02;--p-text:#1f1f1f;}
+  .mkt-row[data-p="mercari"]{--p-color:#6FC3F0;--p-text:#10324a;}
+  .mkt-row[data-p="poshmark"]{--p-color:#7A1F3D;}
+  .mkt-row[data-p="shopify"]{--p-color:#3E8E41;}
+  .mkt-row[data-p="etsy"]{--p-color:#F1641E;}
+  .mkt-row[data-p="depop"]{--p-color:#D8262B;}
+</style>
+<script>
+(function() {
+  function tag() {
+    document.querySelectorAll(".mkt-row").forEach(function(row) {
+      var badge = row.querySelector(".mkt-platform");
+      if (badge) row.setAttribute("data-p", badge.textContent.trim().toLowerCase());
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", tag);
+  else tag();
+})();
+</script>
 </body>
 </html>
