@@ -9,6 +9,7 @@ clone of index.html between the PRINT_TILE_START/END and PRINT_CARD_START/END
 HTML comment markers, and pushes the change to GitHub.
 """
 import json
+import socket
 import os
 import subprocess
 import sys
@@ -27,11 +28,24 @@ def load_printers():
         return json.load(f)
 
 
+def port_open(ip, port=8883, timeout=3):
+    """True if the printer's status port answers - a quick test before the slower library connect."""
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def query_printer(cfg):
     import bambulabs_api as bl
 
     name = cfg["name"]
     print(f"--- Checking {name} ({cfg['ip']}) ---", flush=True)
+    if not port_open(cfg["ip"]):
+        print(f"    -> {name}: status=offline (no answer on the network)", flush=True)
+        return {"name": name, "status": "offline", "raw_state": None,
+                "percentage": None, "minutes_left": None, "error": "no answer"}
     try:
         printer = bl.Printer(cfg["ip"], cfg["access_code"], cfg["serial"])
         printer.connect()
@@ -43,7 +57,9 @@ def query_printer(cfg):
 
         printer.disconnect()
 
-        if "RUN" in raw_state or "PRINT" in raw_state:
+        if raw_state in ("", "UNKNOWN") and percentage is None:
+            status = "offline"
+        elif "RUN" in raw_state or "PRINT" in raw_state:
             status = "printing"
         elif "PAUSE" in raw_state:
             status = "paused"
@@ -106,8 +122,16 @@ def format_minutes(total_minutes):
 
 
 def build_row(p):
-    if p["status"] == "unreachable":
-        return f'    <div class="dash-empty">{p["name"]}: couldn\'t reach it on the network.</div>'
+    if p["status"] in ("unreachable", "offline"):
+        return (
+            '    <div class="dash-item">\n'
+            '      <div class="dot2" style="background:#9aa0a6;"></div>\n'
+            '      <div class="dash-item-body">\n'
+            f'        <p class="dash-item-title">{p["name"]}</p>\n'
+            '        <p class="dash-item-meta">Offline</p>\n'
+            "      </div>\n"
+            "    </div>"
+        )
     if p["status"] == "printing":
         pct = f'{p["percentage"]}%' if p["percentage"] is not None else "printing"
         time_left = format_minutes(p["minutes_left"])
