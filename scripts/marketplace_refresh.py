@@ -42,7 +42,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from html import unescape
 
 REPO_DIR = Path.home() / "launchpad"
@@ -680,6 +680,78 @@ def fetch_shopify_unfulfilled_orders():
 
 
 # ---------------------------------------------------------------------------
+# Mercari sales (via Nifty, not Mail)
+# ---------------------------------------------------------------------------
+#
+# Mercari doesn't email sale notices, and Nifty has no API key a script can
+# use - only a sign-in-based connector. So a scheduled Claude task (with the
+# Nifty connector) writes recent Mercari sales into NIFTY_MERCARI_FILE every
+# couple of hours, and this script just reads that file. Nifty can't tell
+# whether an order has shipped yet, so each sale stays on the card until you
+# tick "Shipped" or it ages past NIFTY_MERCARI_MAX_DAYS.
+#
+# File format:
+#   {"updated_at": "2026-11-10T23:59:00Z",
+#    "sales": [{"item_id": "...", "title": "...", "price": 28.0,
+#               "sold_at": "2026-11-07T03:46:24.752Z"}, ...]}
+
+NIFTY_MERCARI_FILE = REPO_DIR / "nifty_mercari_sales.json"
+NIFTY_MERCARI_MAX_DAYS = 14
+NIFTY_MERCARI_STALE_HOURS = 12
+MERCARI_SELLER_URL = "https://www.mercari.com/mypage/"
+
+
+def _parse_iso_utc(value):
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+
+
+def load_nifty_mercari_rows(path=None, max_days=NIFTY_MERCARI_MAX_DAYS):
+    """Order rows for recent Mercari sales from the Nifty snapshot file."""
+    path = Path(path or NIFTY_MERCARI_FILE)
+    if not path.exists():
+        print(f"  (Mercari via Nifty skipped - {path.name} not found yet)", file=sys.stderr)
+        return []
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as e:
+        print(f"  (Mercari via Nifty skipped - couldn't read {path.name}: {e})", file=sys.stderr)
+        return []
+
+    now = datetime.now(timezone.utc)
+    try:
+        age_h = (now - _parse_iso_utc(data.get("updated_at", ""))).total_seconds() / 3600
+        if age_h > NIFTY_MERCARI_STALE_HOURS:
+            print(f"  WARNING: {path.name} is {age_h:.0f}h old - is the Nifty "
+                  f"scheduled task still running?", file=sys.stderr)
+    except ValueError:
+        pass
+
+    cutoff = now - timedelta(days=max_days)
+    sales = []
+    for sale in data.get("sales") or []:
+        try:
+            sold = _parse_iso_utc(sale["sold_at"])
+        except (KeyError, ValueError, AttributeError):
+            continue
+        if sold >= cutoff and sale.get("item_id"):
+            sales.append((sold, sale))
+    sales.sort(key=lambda pair: pair[0], reverse=True)
+
+    rows = []
+    for sold, sale in sales:
+        price = sale.get("price")
+        price_txt = f" — ${float(price):.2f}" if isinstance(price, (int, float)) else ""
+        subject = f"Mercari sale: {sale.get('title', '(untitled)')}{price_txt}"
+        sold_local = sold.astimezone()
+        extra = (f'<span class="mkt-countdown">Sold {sold_local.strftime("%b")} '
+                 f'{sold_local.day}</span>')
+        rows.append(build_row(f"nifty-{sale['item_id']}", "Mercari", subject,
+                              MERCARI_SELLER_URL, extra, shipped=True))
+    print(f"  Mercari (Nifty): {len(rows)} sale(s) in the last {max_days} days")
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -798,6 +870,9 @@ def main():
             print(f"  (dropped {before - len(order_rows)} Shopify order email(s) - "
                   f"using the API instead)")
         order_rows.extend(shopify_rows)
+
+    print("--- Reading Mercari sales (Nifty snapshot) ---")
+    order_rows.extend(load_nifty_mercari_rows())
 
     if args.dry_run:
         print(f"\n{len(order_rows)} order row(s) would get a 'Shipped' checkbox.")
