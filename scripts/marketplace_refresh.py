@@ -417,10 +417,22 @@ NOT_AN_ORDER_RE = re.compile(
     r"marked as shipped",
     re.I)
 
-def build_row(msg_id, platform, subject, link, extra_html=""):
+def build_row(msg_id, platform, subject, link, extra_html="", shipped=False):
+    """
+    shipped=True is used for Orders to Ship rows: instead of the generic
+    dismiss box they get a "Shipped" checkbox, handled by the
+    MKT_SHIPPED_UI block (see build_shipped_ui()).
+    """
     href = esc(link) if link else "#"
+    if shipped:
+        checkbox = (f'<label class="mkt-checkbox mkt-ship-check" title="Mark as shipped">'
+                    f'<input type="checkbox" class="mkt-shipped" data-id="{esc(msg_id)}">'
+                    f'<span>Shipped</span></label>')
+    else:
+        checkbox = (f'<label class="mkt-checkbox"><input type="checkbox" class="mkt-dismiss" '
+                    f'data-id="{esc(msg_id)}"></label>')
     return f'''<div class="mkt-row" data-mkt-id="{esc(msg_id)}">
-  <label class="mkt-checkbox"><input type="checkbox" class="mkt-dismiss" data-id="{esc(msg_id)}"></label>
+  {checkbox}
   <span class="mkt-platform">{esc(platform)}</span>
   <a class="mkt-subject" href="{href}" target="_blank" rel="noopener">{esc(subject)}</a>
   {extra_html}
@@ -434,6 +446,104 @@ def build_section(rows):
 def build_tile(count, label, css_class):
     return (f'<div class="dash-tile {css_class}"><div class="num">{count}</div>'
             f'<div class="label">{esc(label)}</div></div>')
+
+
+# ---------------------------------------------------------------------------
+# "Shipped" checkbox UI for the Orders to Ship card
+# ---------------------------------------------------------------------------
+#
+# Ticking an order's "Shipped" box hides that row, remembers the tick in
+# this browser's localStorage, and lowers the "Marketplace orders" tile
+# count. On each page load, saved ticks for orders that are no longer on
+# the page (shipped for real and gone from the mailbox / Shopify) are
+# pruned so the saved list doesn't grow forever. If the orders card is
+# empty (e.g. Mail couldn't be read on that run), pruning is skipped so a
+# bad refresh never wipes every saved tick.
+#
+# This block is written into index.html between the markers below on every
+# run (inserted before </body> the first time), so the script owns it.
+
+SHIPPED_UI_START = "<!--MKT_SHIPPED_UI_START-->"
+SHIPPED_UI_END = "<!--MKT_SHIPPED_UI_END-->"
+
+def build_shipped_ui():
+    return """<style id="mkt-shipped-styles">
+  .mkt-ship-check{gap:5px;font-size:11px;color:var(--muted);cursor:pointer;user-select:none;}
+  .mkt-ship-check span{white-space:nowrap;}
+</style>
+<script>
+(function() {
+  var KEY = "launchpad_mkt_shipped";
+  var OLD_KEY = "launchpad_mkt_dismissed"; // generic dismiss list, pre-"Shipped"
+  function load(k) { try { return JSON.parse(localStorage.getItem(k) || "[]") || []; } catch(e) { return []; } }
+  function save(a) { try { localStorage.setItem(KEY, JSON.stringify(a)); } catch(e) {} }
+
+  function updateOrdersTile() {
+    var visible = 0;
+    document.querySelectorAll(".mkt-shipped").forEach(function(box) {
+      var row = box.closest(".mkt-row");
+      if (row && row.style.display !== "none") visible++;
+    });
+    document.querySelectorAll(".dash-tile").forEach(function(tile) {
+      var label = tile.querySelector(".label");
+      if (label && label.textContent.trim() === "Marketplace orders") {
+        var num = tile.querySelector(".num");
+        if (num) num.textContent = visible;
+      }
+    });
+  }
+
+  function init() {
+    var boxes = Array.prototype.slice.call(document.querySelectorAll(".mkt-shipped"));
+    var onPage = boxes.map(function(b) { return b.getAttribute("data-id"); });
+    var saved = load(KEY);
+    // Carry over orders ticked with the old generic dismiss box.
+    load(OLD_KEY).forEach(function(id) {
+      if (onPage.indexOf(id) !== -1 && saved.indexOf(id) === -1) saved.push(id);
+    });
+    // Prune ticks for orders no longer on the page (skip if the card is empty).
+    if (onPage.length) {
+      saved = saved.filter(function(id) { return onPage.indexOf(id) !== -1; });
+    }
+    save(saved);
+
+    boxes.forEach(function(box) {
+      var id = box.getAttribute("data-id");
+      var row = box.closest(".mkt-row");
+      if (saved.indexOf(id) !== -1) {
+        box.checked = true;
+        if (row) row.style.display = "none";
+      }
+      box.addEventListener("change", function() {
+        var list = load(KEY);
+        if (box.checked) {
+          if (list.indexOf(id) === -1) list.push(id);
+          if (row) row.style.display = "none";
+        } else {
+          list = list.filter(function(x) { return x !== id; });
+          if (row) row.style.display = "";
+        }
+        save(list);
+        updateOrdersTile();
+      });
+    });
+    updateOrdersTile();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>"""
+
+
+def ensure_shipped_ui(html):
+    """Writes/refreshes the Shipped-checkbox CSS+JS block in index.html."""
+    if SHIPPED_UI_START in html and SHIPPED_UI_END in html:
+        return replace_between(html, SHIPPED_UI_START, SHIPPED_UI_END, build_shipped_ui())
+    block = f"{SHIPPED_UI_START}\n{build_shipped_ui()}\n{SHIPPED_UI_END}\n"
+    idx = html.rfind("</body>")
+    if idx == -1:
+        return html + "\n" + block
+    return html[:idx] + block + html[idx:]
 
 
 def replace_between(html, start_marker, end_marker, new_inner):
@@ -562,7 +672,7 @@ def fetch_shopify_unfulfilled_orders():
         amount = money.get("amount", "?")
         subject = f"{node.get('name', '?')} \u2014 {', '.join(items) or '(no items)'} \u2014 ${amount}"
         link = f"https://admin.shopify.com/store/{shop_slug}/orders/{order_id}"
-        rows.append(build_row(f"shopify-{order_id}", "Shopify", subject, link))
+        rows.append(build_row(f"shopify-{order_id}", "Shopify", subject, link, shipped=True))
 
     print(f"  Shopify: {len(rows)} paid/unfulfilled order(s)"
           + (f" (skipped {skipped} synced from eBay/other marketplaces)" if skipped else ""))
@@ -645,7 +755,7 @@ def main():
                 if NOT_AN_ORDER_RE.search(msg["subject"]):
                     print("     (skipped - not an order to ship)")
                     continue
-                order_rows.append(build_row(msg["id"], platform, msg["subject"], link))
+                order_rows.append(build_row(msg["id"], platform, msg["subject"], link, shipped=True))
             elif kind == "messages":
                 thread_key = compute_thread_key(platform, msg["subject"], link)
                 message_candidates.append(
@@ -690,6 +800,7 @@ def main():
         order_rows.extend(shopify_rows)
 
     if args.dry_run:
+        print(f"\n{len(order_rows)} order row(s) would get a 'Shipped' checkbox.")
         print("\n=== Dry run complete - index.html and git were not touched ===")
         return
 
@@ -710,6 +821,7 @@ def main():
                             build_tile(len(deduped_offers), "Marketplace offers", "warn"))
     html = replace_between(html, "<!--MKT_MESSAGES_TILE_START-->", "<!--MKT_MESSAGES_TILE_END-->",
                             build_tile(len(deduped_messages), "Marketplace messages", "info"))
+    html = ensure_shipped_ui(html)
 
     INDEX_HTML.write_text(html)
     print("index.html updated.")
